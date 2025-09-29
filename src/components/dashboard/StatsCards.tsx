@@ -19,6 +19,11 @@ export default function StatsCards() {
   const { clients, products, invoices } = useData();
   const { orders } = useOrder();
 
+  // Fonction pour vérifier si une commande société a déjà une facture
+  const hasInvoiceForOrder = (orderId: string) => {
+    return invoices.some(invoice => invoice.orderId === orderId);
+  };
+
   // Chiffre d'affaires total des factures créées cette année
   const currentYear = new Date().getFullYear();
   const paidInvoices = invoices.filter(
@@ -28,6 +33,24 @@ export default function StatsCards() {
   );
 
   const totalRevenue = paidInvoices.reduce((sum, invoice) => sum + invoice.totalTTC, 0);
+
+  // CA des commandes livrées (sans doublons avec les factures)
+  const ordersRevenue = orders
+    .filter(order => {
+      const orderYear = new Date(order.orderDate).getFullYear();
+      if (orderYear !== currentYear || order.status !== 'livre') return false;
+      
+      // Inclure toutes les commandes particuliers
+      if (order.clientType === 'personne_physique') return true;
+      
+      // Inclure seulement les commandes sociétés qui n'ont PAS de facture
+      if (order.clientType === 'societe') {
+        return !hasInvoiceForOrder(order.id);
+      }
+      
+      return false;
+    })
+    .reduce((sum, order) => sum + order.totalTTC, 0);
 
   // Nombre total de factures créées cette année
   const totalInvoicesThisYear = invoices.filter(
@@ -88,10 +111,10 @@ export default function StatsCards() {
     },
     {
       title: 'CA Commandes Livrées',
-      value: `${orders.filter(o => o.status === 'livre').reduce((sum, o) => sum + o.totalTTC, 0).toLocaleString()} MAD`,
-      subtitle: 'Chiffre d\'affaires commandes',
+      value: `${ordersRevenue.toLocaleString()} MAD`,
+      subtitle: 'Commandes (sans doublons factures)',
       trend: 0, // pas de calcul de tendance pour l’instant
-      trendLabel: `${orders.filter(o => o.status === 'livre').length} commande${orders.filter(o => o.status === 'livre').length > 1 ? 's' : ''} livrées`,
+      trendLabel: `Particuliers + Sociétés sans facture`,
       icon: ShoppingCart,
       bgColor: 'bg-gradient-to-br from-sky-500 to-blue-600',
       hoverColor: 'hover:from-sky-600 hover:to-blue-700'
@@ -118,7 +141,10 @@ export default function StatsCards() {
     },
     {
       title: 'CA Particuliers',
-      value: `${orders.filter(o => o.status === 'livre' && o.clientType === 'personne_physique').reduce((sum, o) => sum + o.totalTTC, 0).toLocaleString()} MAD`,
+      value: `${orders
+        .filter(o => o.status === 'livre' && o.clientType === 'personne_physique')
+        .reduce((sum, o) => sum + o.totalTTC, 0)
+        .toLocaleString()} MAD`,
       subtitle: 'Commandes particuliers',
       trend: 0,
       trendLabel: `${orders.filter(o => o.status === 'livre' && o.clientType === 'personne_physique').length} commandes particuliers`,

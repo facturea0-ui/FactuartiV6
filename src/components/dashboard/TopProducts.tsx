@@ -13,9 +13,26 @@ export default function TopProducts() {
 
   // Agrégation des ventes par produit à partir des commandes "livre"
   const aggregates = React.useMemo(() => {
+    // Fonction pour vérifier si une commande société a déjà une facture
+    const hasInvoiceForOrder = (orderId: string) => {
+      return invoices.some((invoice: any) => invoice.orderId === orderId);
+    };
+
     const map = new Map<string, { qty: number; revenue: number }>();
     (orders || [])
-      .filter(o => o?.status === 'livre')
+      .filter(o => {
+        if (o?.status !== 'livre') return false;
+        
+        // Inclure toutes les commandes particuliers
+        if (o.clientType === 'personne_physique') return true;
+        
+        // Inclure seulement les commandes sociétés qui n'ont PAS de facture
+        if (o.clientType === 'societe') {
+          return !hasInvoiceForOrder(o.id);
+        }
+        
+        return false;
+      })
       .forEach(o => {
         (o.items || []).forEach((it: any) => {
           const key = String(it.productName || '');
@@ -28,7 +45,7 @@ export default function TopProducts() {
         });
       });
     return map;
-  }, [orders]);
+  }, [orders, invoices]);
 
   // Calculs par produit (unités, marge, etc.)
   const productSales = (products || []).map(p => {
