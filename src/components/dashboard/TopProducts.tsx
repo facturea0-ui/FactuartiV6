@@ -1,4 +1,4 @@
-// src/components/dashboard/TopProducts.tsx
+// path: src/components/dashboard/TopProducts.tsx
 import React from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useData } from '../../contexts/DataContext';
@@ -6,59 +6,82 @@ import { useOrder } from '../../contexts/OrderContext';
 import { Package, Trophy, TrendingUp, Star, Award } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+// Types minimaux (Why: éviter any partout et erreurs de propriété)
+type OrderItem = {
+  productName?: string;
+  quantity?: number | string;
+  unitPrice?: number | string;
+  total?: number | string;
+};
+
+type Order = {
+  id: string;
+  status?: string;
+  clientType?: 'societe' | 'personne_physique' | string;
+  items?: OrderItem[];
+};
+
+type Invoice = {
+  id: string;
+  orderId?: string;
+};
+
+type Product = {
+  name: string;
+  purchasePrice?: number | string;
+  category?: string;
+  unit?: string;
+};
+
 export default function TopProducts() {
   const { t } = useLanguage();
-  const { products } = useData();
+  const { products, invoices } = useData(); // <-- FIX: récupérer invoices ici
   const { orders } = useOrder();
 
   // Agrégation des ventes par produit à partir des commandes "livre"
   const aggregates = React.useMemo(() => {
-    // Fonction pour vérifier si une commande société a déjà une facture
-    const hasInvoiceForOrder = (orderId: string) => {
-      return invoices.some((invoice: any) => invoice.orderId === orderId);
-    };
+    const invs: Invoice[] = (invoices as Invoice[]) || []; // Why: éviter ReferenceError et protéger null
+    const hasInvoiceForOrder = (orderId: string) => invs.some((invoice) => invoice.orderId === orderId);
 
     const map = new Map<string, { qty: number; revenue: number }>();
-    (orders || [])
-      .filter(o => {
-        if (o?.status !== 'livre') return false;
-        
-        // Inclure toutes les commandes particuliers
+
+    ((orders as Order[]) || [])
+      .filter((o) => {
+        if (!o || o.status !== 'livre') return false;
         if (o.clientType === 'personne_physique') return true;
-        
-        // Inclure seulement les commandes sociétés qui n'ont PAS de facture
-        if (o.clientType === 'societe') {
-          return !hasInvoiceForOrder(o.id);
-        }
-        
+        if (o.clientType === 'societe') return !hasInvoiceForOrder(o.id); // Why: ne pas double-compter si déjà facturé
         return false;
       })
-      .forEach(o => {
-        (o.items || []).forEach((it: any) => {
-          const key = String(it.productName || '');
+      .forEach((o) => {
+        (o.items || []).forEach((it) => {
+          const key = String(it.productName || '').trim();
           if (!key) return;
           const prev = map.get(key) || { qty: 0, revenue: 0 };
-          const qty = Number(it.quantity) || 0;
-          // `total` attendu numérique; fallback si besoin
-          const total = Number(it.total ?? qty * Number(it.unitPrice || 0)) || 0;
-          map.set(key, { qty: prev.qty + qty, revenue: prev.revenue + total });
+          const qty = Number(it.quantity ?? 0) || 0;
+          const lineTotal =
+            Number(
+              it.total ??
+                (qty > 0 ? qty * Number(it.unitPrice ?? 0) : 0)
+            ) || 0;
+          map.set(key, { qty: prev.qty + qty, revenue: prev.revenue + lineTotal });
         });
       });
+
     return map;
-  }, [orders, invoices]);
+  }, [orders, invoices]); // <-- FIX: ajouter invoices dans les deps
 
   // Calculs par produit (unités, marge, etc.)
-  const productSales = (products || []).map(p => {
-    const name = p.name;
+  const productSales = ((products as Product[]) || []).map((p) => {
+    const name = p.name || '—';
     const agg = aggregates.get(name) || { qty: 0, revenue: 0 };
-    const purchasePrice = Number((p as any).purchasePrice) || 0;
+    const purchasePrice = Number(p.purchasePrice ?? 0) || 0;
 
     return {
       name,
       sales: agg.qty,
       revenue: agg.revenue,
-      category: (p as any).category || 'Non catégorisé',
-      unit: (p as any).unit || 'unité',
+      category: p.category || 'Non catégorisé',
+      unit: p.unit || 'unité',
       margin: agg.revenue - agg.qty * purchasePrice,
       purchasePrice,
     };
@@ -66,7 +89,7 @@ export default function TopProducts() {
 
   // Top 3 sur quantité vendue
   const topProducts = productSales
-    .filter(p => p.sales > 0)
+    .filter((p) => p.sales > 0)
     .sort((a, b) => b.sales - a.sales)
     .slice(0, 3);
 
@@ -190,7 +213,7 @@ export default function TopProducts() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8 }}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center space-between justify-between">
             <div className="flex items-center space-x-3">
               <TrendingUp className="w-5 h-5 text-teal-600" />
               <div>
